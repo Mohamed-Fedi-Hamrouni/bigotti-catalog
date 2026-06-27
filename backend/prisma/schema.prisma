@@ -41,6 +41,7 @@ model Product {
   typeId    String   @map("type_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  images ProductImage[]
 
   type     ProductType      @relation(fields: [typeId], references: [id])
   variants ProductVariant[]
@@ -96,4 +97,19 @@ model PriceHistory {
   changedByUser User?          @relation(fields: [changedByUserId], references: [id])
 
   @@map("price_history")
+}
+
+model ProductImage {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  url         String
+  storagePath String   @map("storage_path")
+  altText     String?  @map("alt_text")
+  isMain      Boolean  @default(false) @map("is_main")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
 }
