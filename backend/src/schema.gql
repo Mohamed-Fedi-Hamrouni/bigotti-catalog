@@ -2,6 +2,47 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input CreateProductTypeInput {
+  name: String!
+}
+
+input CreateTagInput {
+  name: String!
+}
+
+type Mutation {
+  createProductType(input: CreateProductTypeInput!): ProductTypeModel!
+  createTag(input: CreateTagInput!): TagModel!
+  deleteProductType(id: ID!): Boolean!
+  deleteTag(id: ID!): Boolean!
+  updateProductType(input: UpdateProductTypeInput!): ProductTypeModel!
+  updateTag(input: UpdateTagInput!): TagModel!
+}
+
+type ProductTypeModel {
+  id: ID!
+  name: String!
+}
+
 type Query {
   health: String!
+  productType(id: ID!): ProductTypeModel!
+  productTypes: [ProductTypeModel!]!
+  tag(id: ID!): TagModel!
+  tags: [TagModel!]!
+}
+
+type TagModel {
+  id: ID!
+  name: String!
+}
+
+input UpdateProductTypeInput {
+  id: ID!
+  name: String!
+}
+
+input UpdateTagInput {
+  id: ID!
+  name: String!
 }
