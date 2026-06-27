@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(SELLER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  priceHistories PriceHistory[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  SELLER
+}
+
+model ProductType {
+  id   String @id @default(uuid())
+  name String @unique
+
+  products Product[]
+
+  @@map("product_types")
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  ref       String   @unique
+  name      String
+  typeId    String   @map("type_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  type     ProductType      @relation(fields: [typeId], references: [id])
+  variants ProductVariant[]
+  tags     ProductTag[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  color     String
+  size      String
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceHistory PriceHistory[]
+
+  @@map("product_variants")
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String @unique
+
+  products ProductTag[]
+
+  @@map("tags")
+}
+
+model ProductTag {
+  productId String @map("product_id")
+  tagId     String @map("tag_id")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@map("product_tags")
+}
+
+model PriceHistory {
+  id              String   @id @default(uuid())
+  variantId        String   @map("variant_id")
+  oldPrice         Decimal  @map("old_price") @db.Decimal(10, 2)
+  newPrice         Decimal  @map("new_price") @db.Decimal(10, 2)
+  changedAt        DateTime @default(now()) @map("changed_at")
+  changedByUserId  String?  @map("changed_by_user_id")
+
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  changedByUser User?          @relation(fields: [changedByUserId], references: [id])
+
+  @@map("price_history")
+}
