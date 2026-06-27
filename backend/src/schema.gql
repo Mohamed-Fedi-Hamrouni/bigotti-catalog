@@ -2,21 +2,71 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+input CreateProductInput {
+  name: String!
+  ref: String!
+  tagIds: [ID!]
+  typeId: ID!
+}
+
 input CreateProductTypeInput {
   name: String!
+}
+
+input CreateProductVariantInput {
+  color: String!
+  price: Float!
+  productId: ID!
+  size: String!
 }
 
 input CreateTagInput {
   name: String!
 }
 
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
 type Mutation {
+  createProduct(input: CreateProductInput!): ProductModel!
   createProductType(input: CreateProductTypeInput!): ProductTypeModel!
+  createProductVariant(input: CreateProductVariantInput!): ProductVariantModel!
   createTag(input: CreateTagInput!): TagModel!
+  deleteProduct(id: ID!): Boolean!
   deleteProductType(id: ID!): Boolean!
+  deleteProductVariant(id: ID!): Boolean!
   deleteTag(id: ID!): Boolean!
+  updateProduct(input: UpdateProductInput!): ProductModel!
   updateProductType(input: UpdateProductTypeInput!): ProductTypeModel!
+  updateProductVariant(input: UpdateProductVariantInput!): ProductVariantModel!
   updateTag(input: UpdateTagInput!): TagModel!
+  updateVariantPrice(input: UpdateVariantPriceInput!): ProductVariantModel!
+}
+
+type ProductImageModel {
+  altText: String
+  createdAt: DateTime!
+  id: ID!
+  isMain: Boolean!
+  position: Float!
+  productId: ID!
+  storagePath: String!
+  url: String!
+}
+
+type ProductModel {
+  createdAt: DateTime!
+  id: ID!
+  images: [ProductImageModel!]!
+  name: String!
+  ref: String!
+  tags: [TagModel!]!
+  type: ProductTypeModel!
+  typeId: ID!
+  updatedAt: DateTime!
+  variants: [ProductVariantModel!]!
 }
 
 type ProductTypeModel {
@@ -24,10 +74,23 @@ type ProductTypeModel {
   name: String!
 }
 
+type ProductVariantModel {
+  color: String!
+  createdAt: DateTime!
+  id: ID!
+  price: Float!
+  productId: ID!
+  size: String!
+  updatedAt: DateTime!
+}
+
 type Query {
   health: String!
+  product(id: ID!): ProductModel!
   productType(id: ID!): ProductTypeModel!
   productTypes: [ProductTypeModel!]!
+  products: [ProductModel!]!
+  searchProducts(keyword: String!): [ProductModel!]!
   tag(id: ID!): TagModel!
   tags: [TagModel!]!
 }
@@ -37,12 +100,33 @@ type TagModel {
   name: String!
 }
 
+input UpdateProductInput {
+  id: ID!
+  name: String
+  ref: String
+  tagIds: [ID!]
+  typeId: ID
+}
+
 input UpdateProductTypeInput {
   id: ID!
   name: String!
 }
 
+input UpdateProductVariantInput {
+  color: String
+  id: ID!
+  price: Float
+  size: String
+}
+
 input UpdateTagInput {
   id: ID!
   name: String!
+}
+
+input UpdateVariantPriceInput {
+  changedByUserId: ID
+  newPrice: Float!
+  variantId: ID!
 }
