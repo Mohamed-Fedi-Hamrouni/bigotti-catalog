@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useState } from "react";
 
 const navigationItems = [
@@ -27,10 +28,16 @@ export default function Home() {
         <main className="flex min-h-screen bg-slate-100 text-slate-950">
             <aside className="fixed left-0 top-0 flex h-screen w-72 flex-col border-r border-slate-200 bg-white px-6 py-8 shadow-sm">
                 <div className="mb-10">
-                    <h1 className="text-2xl font-bold tracking-tight">
-                        Bigotti
-                    </h1>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <Image
+                        src="/bigotti-logo.jpg"
+                        alt="Logo Bigotti"
+                        width={180}
+                        height={80}
+                        className="h-auto w-44 object-contain"
+                        priority
+                    />
+
+                    <p className="mt-3 text-sm text-slate-500">
                         Catalogue interne
                     </p>
                 </div>
@@ -60,6 +67,17 @@ export default function Home() {
 
             <section className="ml-72 flex min-h-screen flex-1 items-center justify-center px-10">
                 <div className="w-full max-w-3xl text-center">
+                    <div className="mb-8 flex justify-center">
+                        <Image
+                            src="/bigotti-logo.jpg"
+                            alt="Logo Bigotti"
+                            width={320}
+                            height={140}
+                            className="h-auto w-72 object-contain"
+                            priority
+                        />
+                    </div>
+
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
                         Recherche catalogue
                     </p>
