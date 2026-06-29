@@ -52,7 +52,7 @@ export class UploadsService {
     const fileName = `${Date.now()}-${randomUUID()}.${fileExtension}`;
     const storagePath = `products/${product.ref}/${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await this.supabase.storage
+    const { error: uploadError } = await this.supabase.storage
       .from(this.bucketName)
       .upload(storagePath, file.buffer, {
         contentType: file.mimetype,
@@ -67,16 +67,18 @@ export class UploadsService {
       .from(this.bucketName)
       .getPublicUrl(storagePath);
 
-    if (isMain) {
+    const currentImagesCount = await this.prisma.productImage.count({
+      where: { productId },
+    });
+
+    const shouldBeMain = isMain || currentImagesCount === 0;
+
+    if (shouldBeMain) {
       await this.prisma.productImage.updateMany({
         where: { productId },
         data: { isMain: false },
       });
     }
-
-    const currentImagesCount = await this.prisma.productImage.count({
-      where: { productId },
-    });
 
     const image = await this.prisma.productImage.create({
       data: {
@@ -84,12 +86,36 @@ export class UploadsService {
         url: publicUrlData.publicUrl,
         storagePath,
         altText,
-        isMain,
+        isMain: shouldBeMain,
         position: currentImagesCount,
       },
     });
 
     return image;
+  }
+
+  async setMainProductImage(imageId: string) {
+    const image = await this.prisma.productImage.findUnique({
+      where: { id: imageId },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Product image not found');
+    }
+
+    const updatedImage = await this.prisma.$transaction(async (tx) => {
+      await tx.productImage.updateMany({
+        where: { productId: image.productId },
+        data: { isMain: false },
+      });
+
+      return tx.productImage.update({
+        where: { id: imageId },
+        data: { isMain: true },
+      });
+    });
+
+    return updatedImage;
   }
 
   async deleteProductImage(imageId: string) {
@@ -112,6 +138,20 @@ export class UploadsService {
     await this.prisma.productImage.delete({
       where: { id: imageId },
     });
+
+    if (image.isMain) {
+      const nextImage = await this.prisma.productImage.findFirst({
+        where: { productId: image.productId },
+        orderBy: { position: 'asc' },
+      });
+
+      if (nextImage) {
+        await this.prisma.productImage.update({
+          where: { id: nextImage.id },
+          data: { isMain: true },
+        });
+      }
+    }
 
     return { success: true };
   }

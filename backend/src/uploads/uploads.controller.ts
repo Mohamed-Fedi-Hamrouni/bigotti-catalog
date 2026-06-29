@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Param,
+  Patch,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -28,6 +29,11 @@ export class UploadsController {
       altText,
       isMain === 'true',
     );
+  }
+
+  @Patch('products/images/:imageId/main')
+  setMainProductImage(@Param('imageId') imageId: string) {
+    return this.uploadsService.setMainProductImage(imageId);
   }
 
   @Delete('products/images/:imageId')
