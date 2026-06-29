@@ -171,12 +171,21 @@ export default function ProductDetailsPage() {
                             </h1>
                         </div>
 
-                        <Link
-                            href="/products"
-                            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                        >
-                            Retour à la liste
-                        </Link>
+                        <div className="flex gap-3">
+                            <Link
+                                href={`/products/${productId}/edit`}
+                                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                            >
+                                Modifier
+                            </Link>
+
+                            <Link
+                                href="/products"
+                                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                            >
+                                Retour à la liste
+                            </Link>
+                        </div>
                     </div>
 
                     {loading && (
