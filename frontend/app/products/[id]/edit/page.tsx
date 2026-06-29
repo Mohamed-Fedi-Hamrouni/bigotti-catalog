@@ -203,7 +203,7 @@ export default function EditProductPage() {
         ExistingVariantForm[]
     >([]);
     const [newVariants, setNewVariants] = useState<NewVariantForm[]>([]);
-    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [initializedProductId, setInitializedProductId] = useState<
         string | null
     >(null);
@@ -213,6 +213,10 @@ export default function EditProductPage() {
     const [deletingVariantId, setDeletingVariantId] = useState<string | null>(
         null,
     );
+    const [settingMainImageId, setSettingMainImageId] = useState<string | null>(
+        null,
+    );
+    const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
 
@@ -243,8 +247,15 @@ export default function EditProductPage() {
     );
 
     const product = data?.product;
+
+    const productImages = product
+        ? [...product.images].sort((firstImage, secondImage) => {
+              return firstImage.position - secondImage.position;
+          })
+        : [];
+
     const mainImage =
-        product?.images.find((image) => image.isMain) ?? product?.images[0];
+        productImages.find((image) => image.isMain) ?? productImages[0];
 
     useEffect(() => {
         if (!product || initializedProductId === product.id) {
@@ -337,15 +348,21 @@ export default function EditProductPage() {
         );
     }
 
-    async function uploadImage(productName: string) {
-        if (!imageFile) {
-            return;
-        }
+    function removeSelectedImageFile(fileIndex: number) {
+        setImageFiles((currentFiles) =>
+            currentFiles.filter((_, index) => index !== fileIndex),
+        );
+    }
 
+    async function uploadProductImage(
+        file: File,
+        productName: string,
+        isMain = false,
+    ) {
         const formData = new FormData();
-        formData.append("file", imageFile);
+        formData.append("file", file);
         formData.append("altText", productName);
-        formData.append("isMain", "true");
+        formData.append("isMain", String(isMain));
 
         const response = await fetch(
             `${apiUrl}/uploads/products/${productId}/images`,
@@ -358,6 +375,74 @@ export default function EditProductPage() {
         if (!response.ok) {
             const errorBody = await response.text();
             throw new Error(`Image upload failed: ${errorBody}`);
+        }
+    }
+
+    async function handleSetMainImage(imageId: string) {
+        setSettingMainImageId(imageId);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            const response = await fetch(
+                `${apiUrl}/uploads/products/images/${imageId}/main`,
+                {
+                    method: "PATCH",
+                },
+            );
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`Set main image failed: ${errorBody}`);
+            }
+
+            setSuccessMessage("Image principale modifiée avec succès.");
+            await refetch();
+        } catch (setMainError) {
+            setErrorMessage(
+                setMainError instanceof Error
+                    ? setMainError.message
+                    : "Erreur pendant le changement de l’image principale.",
+            );
+        } finally {
+            setSettingMainImageId(null);
+        }
+    }
+
+    async function handleDeleteImage(image: ProductImage) {
+        const confirmed = window.confirm("Supprimer cette image ?");
+
+        if (!confirmed) {
+            return;
+        }
+
+        setDeletingImageId(image.id);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            const response = await fetch(
+                `${apiUrl}/uploads/products/images/${image.id}`,
+                {
+                    method: "DELETE",
+                },
+            );
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`Delete image failed: ${errorBody}`);
+            }
+
+            setSuccessMessage("Image supprimée avec succès.");
+            await refetch();
+        } catch (deleteError) {
+            setErrorMessage(
+                deleteError instanceof Error
+                    ? deleteError.message
+                    : "Erreur pendant la suppression de l’image.",
+            );
+        } finally {
+            setDeletingImageId(null);
         }
     }
 
@@ -585,7 +670,9 @@ export default function EditProductPage() {
                 }
             }
 
-            await uploadImage(cleanName);
+            for (const imageFile of imageFiles) {
+                await uploadProductImage(imageFile, cleanName, false);
+            }
 
             if (createdVariants.length > 0) {
                 setExistingVariants((currentVariants) => [
@@ -604,7 +691,7 @@ export default function EditProductPage() {
 
             setSuccessMessage("Article modifié avec succès.");
             setNewVariants([]);
-            setImageFile(null);
+            setImageFiles([]);
 
             await refetch();
         } catch (submitError) {
@@ -678,8 +765,7 @@ export default function EditProductPage() {
                             </h1>
                             <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                                 Modifier les informations principales, les tags,
-                                les variantes existantes, puis ajouter une image
-                                ou de nouvelles variantes.
+                                les variantes existantes, puis gérer les images.
                             </p>
                         </div>
 
@@ -726,11 +812,15 @@ export default function EditProductPage() {
                     {!loading && !error && product && (
                         <form
                             onSubmit={handleSubmit}
-                            className="grid gap-8 lg:grid-cols-[360px_1fr]"
+                            className="grid gap-8 lg:grid-cols-[380px_1fr]"
                         >
                             <div className="space-y-6">
                                 <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <div className="aspect-square overflow-hidden rounded-2xl bg-slate-100">
+                                    <h2 className="text-lg font-bold text-slate-950">
+                                        Image principale
+                                    </h2>
+
+                                    <div className="mt-4 aspect-square overflow-hidden rounded-2xl bg-slate-100">
                                         {mainImage ? (
                                             <img
                                                 src={mainImage.url}
@@ -748,26 +838,160 @@ export default function EditProductPage() {
                                         <input
                                             type="file"
                                             accept="image/*"
+                                            multiple
                                             onChange={(event) =>
-                                                setImageFile(
-                                                    event.target.files?.[0] ??
-                                                        null,
+                                                setImageFiles(
+                                                    Array.from(
+                                                        event.target.files ??
+                                                            [],
+                                                    ),
                                                 )
                                             }
                                             className="hidden"
                                         />
 
                                         <span className="text-sm font-semibold text-slate-700">
-                                            {imageFile
-                                                ? imageFile.name
-                                                : "Ajouter une nouvelle image principale"}
+                                            {imageFiles.length > 0
+                                                ? `${imageFiles.length} image(s) sélectionnée(s)`
+                                                : "Ajouter une ou plusieurs images"}
                                         </span>
 
                                         <p className="mt-2 text-xs text-slate-500">
-                                            La nouvelle image sera ajoutée et
-                                            marquée comme image principale.
+                                            Les images seront envoyées après le
+                                            clic sur “Enregistrer les
+                                            modifications”.
                                         </p>
                                     </label>
+
+                                    {imageFiles.length > 0 && (
+                                        <div className="mt-4 space-y-2">
+                                            {imageFiles.map(
+                                                (imageFile, index) => (
+                                                    <div
+                                                        key={`${imageFile.name}-${index}`}
+                                                        className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                                                    >
+                                                        <span className="truncate">
+                                                            {imageFile.name}
+                                                        </span>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removeSelectedImageFile(
+                                                                    index,
+                                                                )
+                                                            }
+                                                            className="font-semibold text-red-600"
+                                                        >
+                                                            Retirer
+                                                        </button>
+                                                    </div>
+                                                ),
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <h2 className="text-lg font-bold text-slate-950">
+                                                Toutes les images
+                                            </h2>
+                                            <p className="mt-1 text-sm text-slate-500">
+                                                {productImages.length} image(s)
+                                                enregistrée(s)
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 space-y-4">
+                                        {productImages.length === 0 && (
+                                            <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
+                                                Aucune image enregistrée.
+                                            </div>
+                                        )}
+
+                                        {productImages.map((image) => (
+                                            <div
+                                                key={image.id}
+                                                className={`rounded-2xl border p-3 ${
+                                                    image.isMain
+                                                        ? "border-slate-950 bg-slate-50"
+                                                        : "border-slate-200 bg-white"
+                                                }`}
+                                            >
+                                                <div className="aspect-video overflow-hidden rounded-xl bg-slate-100">
+                                                    <img
+                                                        src={image.url}
+                                                        alt={product.name}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                </div>
+
+                                                <div className="mt-3 flex items-center justify-between gap-3">
+                                                    <span
+                                                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                                            image.isMain
+                                                                ? "bg-slate-950 text-white"
+                                                                : "bg-slate-100 text-slate-600"
+                                                        }`}
+                                                    >
+                                                        {image.isMain
+                                                            ? "Image principale"
+                                                            : `Image ${image.position + 1}`}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-3 flex gap-2">
+                                                    {!image.isMain && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleSetMainImage(
+                                                                    image.id,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                settingMainImageId ===
+                                                                    image.id ||
+                                                                deletingImageId ===
+                                                                    image.id
+                                                            }
+                                                            className="flex-1 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                                        >
+                                                            {settingMainImageId ===
+                                                            image.id
+                                                                ? "..."
+                                                                : "Définir principale"}
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDeleteImage(
+                                                                image,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            settingMainImageId ===
+                                                                image.id ||
+                                                            deletingImageId ===
+                                                                image.id
+                                                        }
+                                                        className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                                                    >
+                                                        {deletingImageId ===
+                                                        image.id
+                                                            ? "..."
+                                                            : "Supprimer"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
