@@ -1,10 +1,11 @@
 "use client";
 
 import { gql } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 
 const GET_PRODUCT = gql`
     query GetProduct($id: ID!) {
@@ -36,6 +37,12 @@ const GET_PRODUCT = gql`
             createdAt
             updatedAt
         }
+    }
+`;
+
+const DELETE_PRODUCT = gql`
+    mutation DeleteProduct($id: ID!) {
+        deleteProduct(id: $id)
     }
 `;
 
@@ -84,6 +91,14 @@ type GetProductVariables = {
     id: string;
 };
 
+type DeleteProductData = {
+    deleteProduct: boolean;
+};
+
+type DeleteProductVariables = {
+    id: string;
+};
+
 const navigationItems = [
     { label: "Recherche", href: "/" },
     { label: "Ajouter un article", href: "/products/new" },
@@ -94,7 +109,11 @@ const navigationItems = [
 
 export default function ProductDetailsPage() {
     const params = useParams<{ id: string }>();
+    const router = useRouter();
     const productId = params.id;
+
+    const [deleteErrorMessage, setDeleteErrorMessage] = useState("");
+    const [deletingProduct, setDeletingProduct] = useState(false);
 
     const { data, loading, error } = useQuery<
         GetProductData,
@@ -107,9 +126,59 @@ export default function ProductDetailsPage() {
         fetchPolicy: "network-only",
     });
 
+    const [deleteProduct] = useMutation<
+        DeleteProductData,
+        DeleteProductVariables
+    >(DELETE_PRODUCT);
+
     const product = data?.product;
+    const productImages = product
+        ? [...product.images].sort((firstImage, secondImage) => {
+              return firstImage.position - secondImage.position;
+          })
+        : [];
+
     const mainImage =
-        product?.images.find((image) => image.isMain) ?? product?.images[0];
+        productImages.find((image) => image.isMain) ?? productImages[0];
+
+    async function handleDeleteProduct() {
+        if (!product) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Supprimer définitivement l’article "${product.name}" ?`,
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setDeleteErrorMessage("");
+        setDeletingProduct(true);
+
+        try {
+            const result = await deleteProduct({
+                variables: {
+                    id: product.id,
+                },
+            });
+
+            if (!result.data?.deleteProduct) {
+                throw new Error("Article non supprimé.");
+            }
+
+            router.push("/products");
+        } catch (deleteError) {
+            setDeleteErrorMessage(
+                deleteError instanceof Error
+                    ? deleteError.message
+                    : "Erreur pendant la suppression de l’article.",
+            );
+        } finally {
+            setDeletingProduct(false);
+        }
+    }
 
     return (
         <main className="flex min-h-screen bg-slate-100 text-slate-950">
@@ -179,6 +248,17 @@ export default function ProductDetailsPage() {
                                 Modifier
                             </Link>
 
+                            <button
+                                type="button"
+                                onClick={handleDeleteProduct}
+                                disabled={deletingProduct || !product}
+                                className="rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 shadow-sm transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                            >
+                                {deletingProduct
+                                    ? "Suppression..."
+                                    : "Supprimer"}
+                            </button>
+
                             <Link
                                 href="/products"
                                 className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -187,6 +267,12 @@ export default function ProductDetailsPage() {
                             </Link>
                         </div>
                     </div>
+
+                    {deleteErrorMessage && (
+                        <div className="mb-6 rounded-3xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+                            {deleteErrorMessage}
+                        </div>
+                    )}
 
                     {loading && (
                         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
@@ -228,12 +314,16 @@ export default function ProductDetailsPage() {
                                     )}
                                 </div>
 
-                                {product.images.length > 1 && (
+                                {productImages.length > 1 && (
                                     <div className="mt-4 grid grid-cols-4 gap-3">
-                                        {product.images.map((image) => (
+                                        {productImages.map((image) => (
                                             <div
                                                 key={image.id}
-                                                className="aspect-square overflow-hidden rounded-xl bg-slate-100"
+                                                className={`aspect-square overflow-hidden rounded-xl border bg-slate-100 ${
+                                                    image.isMain
+                                                        ? "border-slate-950"
+                                                        : "border-transparent"
+                                                }`}
                                             >
                                                 <img
                                                     src={image.url}
