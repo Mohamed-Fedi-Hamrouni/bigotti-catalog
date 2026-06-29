@@ -1,9 +1,10 @@
 "use client";
 
 import { gql } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 const navigationItems = [
     { label: "Recherche", href: "/" },
@@ -41,6 +42,12 @@ const GET_PRODUCTS = gql`
                 position
             }
         }
+    }
+`;
+
+const DELETE_PRODUCT = gql`
+    mutation DeleteProduct($id: ID!) {
+        deleteProduct(id: $id)
     }
 `;
 
@@ -83,7 +90,21 @@ type GetProductsData = {
     products: Product[];
 };
 
+type DeleteProductData = {
+    deleteProduct: boolean;
+};
+
+type DeleteProductVariables = {
+    id: string;
+};
+
 export default function ProductsPage() {
+    const [deletingProductId, setDeletingProductId] = useState<string | null>(
+        null,
+    );
+    const [successMessage, setSuccessMessage] = useState("");
+    const [deleteErrorMessage, setDeleteErrorMessage] = useState("");
+
     const { data, loading, error, refetch } = useQuery<GetProductsData>(
         GET_PRODUCTS,
         {
@@ -91,7 +112,51 @@ export default function ProductsPage() {
         },
     );
 
+    const [deleteProduct] = useMutation<
+        DeleteProductData,
+        DeleteProductVariables
+    >(DELETE_PRODUCT);
+
     const products = data?.products ?? [];
+
+    async function handleDeleteProduct(product: Product) {
+        const confirmed = window.confirm(
+            `Supprimer définitivement l’article "${product.name}" ?`,
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setDeletingProductId(product.id);
+        setSuccessMessage("");
+        setDeleteErrorMessage("");
+
+        try {
+            const result = await deleteProduct({
+                variables: {
+                    id: product.id,
+                },
+            });
+
+            if (!result.data?.deleteProduct) {
+                throw new Error("Article non supprimé.");
+            }
+
+            setSuccessMessage(
+                `Article "${product.name}" supprimé avec succès.`,
+            );
+            await refetch();
+        } catch (deleteError) {
+            setDeleteErrorMessage(
+                deleteError instanceof Error
+                    ? deleteError.message
+                    : "Erreur pendant la suppression de l’article.",
+            );
+        } finally {
+            setDeletingProductId(null);
+        }
+    }
 
     return (
         <main className="flex min-h-screen bg-slate-100 text-slate-950">
@@ -176,6 +241,18 @@ export default function ProductsPage() {
                         </div>
                     </div>
 
+                    {successMessage && (
+                        <div className="mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-700">
+                            {successMessage}
+                        </div>
+                    )}
+
+                    {deleteErrorMessage && (
+                        <div className="mt-8 rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                            {deleteErrorMessage}
+                        </div>
+                    )}
+
                     <div className="mt-8">
                         {loading && (
                             <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
@@ -208,6 +285,9 @@ export default function ProductsPage() {
                                         product.images.find(
                                             (image) => image.isMain,
                                         ) ?? product.images[0];
+
+                                    const isDeleting =
+                                        deletingProductId === product.id;
 
                                     return (
                                         <article
@@ -309,13 +389,35 @@ export default function ProductsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="mt-5 flex justify-end">
+                                            <div className="mt-5 flex justify-end gap-3">
                                                 <Link
                                                     href={`/products/${product.id}`}
                                                     className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                                                 >
                                                     Voir détails
                                                 </Link>
+
+                                                <Link
+                                                    href={`/products/${product.id}/edit`}
+                                                    className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                                >
+                                                    Modifier
+                                                </Link>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDeleteProduct(
+                                                            product,
+                                                        )
+                                                    }
+                                                    disabled={isDeleting}
+                                                    className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                                                >
+                                                    {isDeleting
+                                                        ? "Suppression..."
+                                                        : "Supprimer"}
+                                                </button>
                                             </div>
                                         </article>
                                     );
