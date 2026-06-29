@@ -76,6 +76,13 @@ type Tag = {
     name: string;
 };
 
+type VariantForm = {
+    localId: string;
+    color: string;
+    size: string;
+    price: string;
+};
+
 type FormDataResponse = {
     productTypes: ProductType[];
     tags: Tag[];
@@ -108,14 +115,19 @@ type CreateProductVariantResponse = {
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
+const initialVariant: VariantForm = {
+    localId: "variant-1",
+    color: "",
+    size: "",
+    price: "",
+};
+
 export default function NewProductPage() {
     const [ref, setRef] = useState("");
     const [name, setName] = useState("");
     const [typeId, setTypeId] = useState("");
     const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-    const [color, setColor] = useState("");
-    const [size, setSize] = useState("");
-    const [price, setPrice] = useState("");
+    const [variants, setVariants] = useState<VariantForm[]>([initialVariant]);
     const [imageFile, setImageFile] = useState<File | null>(null);
 
     const [showTypeCreator, setShowTypeCreator] = useState(false);
@@ -123,6 +135,7 @@ export default function NewProductPage() {
     const [newTypeName, setNewTypeName] = useState("");
     const [newTagName, setNewTagName] = useState("");
 
+    const [submitting, setSubmitting] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
 
@@ -141,7 +154,7 @@ export default function NewProductPage() {
     const [createProductVariant, { loading: creatingVariant }] =
         useMutation<CreateProductVariantResponse>(CREATE_PRODUCT_VARIANT);
 
-    const isSubmitting = creatingProduct || creatingVariant;
+    const isSubmitting = submitting || creatingProduct || creatingVariant;
 
     function toggleTag(tagId: string) {
         setSelectedTagIds((currentTagIds) => {
@@ -153,6 +166,49 @@ export default function NewProductPage() {
 
             return [...currentTagIds, tagId];
         });
+    }
+
+    function addVariant() {
+        setVariants((currentVariants) => [
+            ...currentVariants,
+            {
+                localId: `variant-${Date.now()}-${currentVariants.length + 1}`,
+                color: "",
+                size: "",
+                price: "",
+            },
+        ]);
+    }
+
+    function removeVariant(localId: string) {
+        setVariants((currentVariants) => {
+            if (currentVariants.length === 1) {
+                return currentVariants;
+            }
+
+            return currentVariants.filter(
+                (variant) => variant.localId !== localId,
+            );
+        });
+    }
+
+    function updateVariant(
+        localId: string,
+        field: keyof Omit<VariantForm, "localId">,
+        value: string,
+    ) {
+        setVariants((currentVariants) =>
+            currentVariants.map((variant) => {
+                if (variant.localId !== localId) {
+                    return variant;
+                }
+
+                return {
+                    ...variant,
+                    [field]: value,
+                };
+            }),
+        );
     }
 
     async function handleCreateProductType() {
@@ -289,19 +345,37 @@ export default function NewProductPage() {
 
         const cleanRef = ref.trim();
         const cleanName = name.trim();
-        const cleanColor = color.trim();
-        const cleanSize = size.trim();
-        const numericPrice = Number(price);
 
         if (!cleanRef || !cleanName || !typeId) {
             setErrorMessage("Référence, nom et type sont obligatoires.");
             return;
         }
 
-        if (!cleanColor || !cleanSize || !price || Number.isNaN(numericPrice)) {
-            setErrorMessage("Couleur, taille et prix sont obligatoires.");
+        const cleanVariants = variants.map((variant, index) => ({
+            index: index + 1,
+            color: variant.color.trim(),
+            size: variant.size.trim(),
+            priceText: variant.price.trim(),
+            price: Number(variant.price),
+        }));
+
+        const invalidVariant = cleanVariants.find(
+            (variant) =>
+                !variant.color ||
+                !variant.size ||
+                !variant.priceText ||
+                Number.isNaN(variant.price) ||
+                variant.price < 0,
+        );
+
+        if (invalidVariant) {
+            setErrorMessage(
+                `La variante ${invalidVariant.index} est incomplète. Couleur, taille et prix sont obligatoires.`,
+            );
             return;
         }
+
+        setSubmitting(true);
 
         try {
             const productResult = await createProduct({
@@ -321,30 +395,30 @@ export default function NewProductPage() {
                 throw new Error("Article non créé.");
             }
 
-            await createProductVariant({
-                variables: {
-                    input: {
-                        productId: createdProduct.id,
-                        color: cleanColor,
-                        size: cleanSize,
-                        price: numericPrice,
+            for (const variant of cleanVariants) {
+                await createProductVariant({
+                    variables: {
+                        input: {
+                            productId: createdProduct.id,
+                            color: variant.color,
+                            size: variant.size,
+                            price: variant.price,
+                        },
                     },
-                },
-            });
+                });
+            }
 
             await uploadImage(createdProduct.id, createdProduct.name);
 
             setSuccessMessage(
-                `Article ${createdProduct.ref} créé avec succès.`,
+                `Article ${createdProduct.ref} créé avec ${cleanVariants.length} variante(s).`,
             );
 
             setRef("");
             setName("");
             setTypeId("");
             setSelectedTagIds([]);
-            setColor("");
-            setSize("");
-            setPrice("");
+            setVariants([initialVariant]);
             setImageFile(null);
         } catch (submissionError) {
             setErrorMessage(
@@ -352,6 +426,8 @@ export default function NewProductPage() {
                     ? submissionError.message
                     : "Erreur pendant la création de l’article.",
             );
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -398,7 +474,7 @@ export default function NewProductPage() {
                         Nouvel article
                     </p>
                     <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Ajouter un article, sa première variante et son image
+                        Ajouter un article, ses variantes et son image
                         principale.
                     </p>
                 </div>
@@ -416,7 +492,8 @@ export default function NewProductPage() {
                             </h1>
                             <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                                 Créer un nouvel article avec sa référence, son
-                                type, ses tags, une variante et une image.
+                                type, ses tags, plusieurs variantes et une
+                                image.
                             </p>
                         </div>
 
@@ -641,57 +718,124 @@ export default function NewProductPage() {
                                 </div>
 
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-950">
-                                        Première variante
-                                    </h2>
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-950">
+                                                Variantes
+                                            </h2>
+                                            <p className="mt-1 text-sm text-slate-500">
+                                                Ajoute une ou plusieurs
+                                                combinaisons couleur / taille /
+                                                prix.
+                                            </p>
+                                        </div>
 
-                                    <div className="mt-5 grid gap-5 md:grid-cols-3">
-                                        <label className="block">
-                                            <span className="text-sm font-semibold text-slate-700">
-                                                Couleur
-                                            </span>
-                                            <input
-                                                value={color}
-                                                onChange={(event) =>
-                                                    setColor(event.target.value)
-                                                }
-                                                type="text"
-                                                placeholder="Blanc"
-                                                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-slate-950"
-                                            />
-                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addVariant}
+                                            className="rounded-full bg-slate-950 px-5 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+                                        >
+                                            + Variante
+                                        </button>
+                                    </div>
 
-                                        <label className="block">
-                                            <span className="text-sm font-semibold text-slate-700">
-                                                Taille
-                                            </span>
-                                            <input
-                                                value={size}
-                                                onChange={(event) =>
-                                                    setSize(event.target.value)
-                                                }
-                                                type="text"
-                                                placeholder="M"
-                                                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-slate-950"
-                                            />
-                                        </label>
+                                    <div className="mt-5 space-y-4">
+                                        {variants.map((variant, index) => (
+                                            <div
+                                                key={variant.localId}
+                                                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                            >
+                                                <div className="mb-4 flex items-center justify-between">
+                                                    <p className="text-sm font-bold text-slate-800">
+                                                        Variante {index + 1}
+                                                    </p>
 
-                                        <label className="block">
-                                            <span className="text-sm font-semibold text-slate-700">
-                                                Prix
-                                            </span>
-                                            <input
-                                                value={price}
-                                                onChange={(event) =>
-                                                    setPrice(event.target.value)
-                                                }
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                placeholder="99"
-                                                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-slate-950"
-                                            />
-                                        </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            removeVariant(
+                                                                variant.localId,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            variants.length ===
+                                                            1
+                                                        }
+                                                        className="rounded-full px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                                                    >
+                                                        Supprimer
+                                                    </button>
+                                                </div>
+
+                                                <div className="grid gap-5 md:grid-cols-3">
+                                                    <label className="block">
+                                                        <span className="text-sm font-semibold text-slate-700">
+                                                            Couleur
+                                                        </span>
+                                                        <input
+                                                            value={
+                                                                variant.color
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateVariant(
+                                                                    variant.localId,
+                                                                    "color",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="text"
+                                                            placeholder="Blanc"
+                                                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+
+                                                    <label className="block">
+                                                        <span className="text-sm font-semibold text-slate-700">
+                                                            Taille
+                                                        </span>
+                                                        <input
+                                                            value={variant.size}
+                                                            onChange={(event) =>
+                                                                updateVariant(
+                                                                    variant.localId,
+                                                                    "size",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="text"
+                                                            placeholder="M"
+                                                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+
+                                                    <label className="block">
+                                                        <span className="text-sm font-semibold text-slate-700">
+                                                            Prix
+                                                        </span>
+                                                        <input
+                                                            value={
+                                                                variant.price
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateVariant(
+                                                                    variant.localId,
+                                                                    "price",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            placeholder="99"
+                                                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
