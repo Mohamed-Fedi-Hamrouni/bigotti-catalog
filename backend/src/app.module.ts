@@ -11,6 +11,7 @@ import { ProductTypesModule } from './product-types/product-types.module';
 import { TagsModule } from './tags/tags.module';
 import { ProductsModule } from './products/products.module';
 import { VariantsModule } from './variants/variants.module';
+import { PriceHistoryModule } from './price-history/price-history.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { VariantsModule } from './variants/variants.module';
     TagsModule,
     ProductsModule,
     VariantsModule,
+    PriceHistoryModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),

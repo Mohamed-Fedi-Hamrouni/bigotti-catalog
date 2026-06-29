@@ -45,6 +45,15 @@ type Mutation {
   updateVariantPrice(input: UpdateVariantPriceInput!): ProductVariantModel!
 }
 
+type PriceHistoryModel {
+  changedAt: DateTime!
+  changedByUserId: ID
+  id: ID!
+  newPrice: Float!
+  oldPrice: Float!
+  variantId: ID!
+}
+
 type ProductImageModel {
   altText: String
   createdAt: DateTime!
@@ -86,6 +95,8 @@ type ProductVariantModel {
 
 type Query {
   health: String!
+  priceHistory: [PriceHistoryModel!]!
+  priceHistoryByVariant(variantId: ID!): [PriceHistoryModel!]!
   product(id: ID!): ProductModel!
   productType(id: ID!): ProductTypeModel!
   productTypes: [ProductTypeModel!]!
