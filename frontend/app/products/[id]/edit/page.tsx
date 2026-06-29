@@ -76,6 +76,34 @@ const CREATE_PRODUCT_VARIANT = gql`
     }
 `;
 
+const UPDATE_PRODUCT_VARIANT = gql`
+    mutation UpdateProductVariant($input: UpdateProductVariantInput!) {
+        updateProductVariant(input: $input) {
+            id
+            color
+            size
+            price
+        }
+    }
+`;
+
+const UPDATE_VARIANT_PRICE = gql`
+    mutation UpdateVariantPrice($input: UpdateVariantPriceInput!) {
+        updateVariantPrice(input: $input) {
+            id
+            color
+            size
+            price
+        }
+    }
+`;
+
+const DELETE_PRODUCT_VARIANT = gql`
+    mutation DeleteProductVariant($id: ID!) {
+        deleteProductVariant(id: $id)
+    }
+`;
+
 type ProductType = {
     id: string;
     name: string;
@@ -129,12 +157,29 @@ type UpdateProductResponse = {
 };
 
 type CreateProductVariantResponse = {
-    createProductVariant: {
-        id: string;
-        color: string;
-        size: string;
-        price: number;
-    };
+    createProductVariant: ProductVariant;
+};
+
+type UpdateProductVariantResponse = {
+    updateProductVariant: ProductVariant;
+};
+
+type UpdateVariantPriceResponse = {
+    updateVariantPrice: ProductVariant;
+};
+
+type DeleteProductVariantResponse = {
+    deleteProductVariant: boolean;
+};
+
+type ExistingVariantForm = {
+    id: string;
+    color: string;
+    size: string;
+    price: string;
+    originalColor: string;
+    originalSize: string;
+    originalPrice: string;
 };
 
 type NewVariantForm = {
@@ -154,11 +199,20 @@ export default function EditProductPage() {
     const [name, setName] = useState("");
     const [typeId, setTypeId] = useState("");
     const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+    const [existingVariants, setExistingVariants] = useState<
+        ExistingVariantForm[]
+    >([]);
     const [newVariants, setNewVariants] = useState<NewVariantForm[]>([]);
     const [imageFile, setImageFile] = useState<File | null>(null);
-    const [initialized, setInitialized] = useState(false);
+    const [initializedProductId, setInitializedProductId] = useState<
+        string | null
+    >(null);
 
     const [submitting, setSubmitting] = useState(false);
+    const [savingVariantId, setSavingVariantId] = useState<string | null>(null);
+    const [deletingVariantId, setDeletingVariantId] = useState<string | null>(
+        null,
+    );
     const [successMessage, setSuccessMessage] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
 
@@ -177,12 +231,23 @@ export default function EditProductPage() {
         CREATE_PRODUCT_VARIANT,
     );
 
+    const [updateProductVariant] = useMutation<UpdateProductVariantResponse>(
+        UPDATE_PRODUCT_VARIANT,
+    );
+
+    const [updateVariantPrice] =
+        useMutation<UpdateVariantPriceResponse>(UPDATE_VARIANT_PRICE);
+
+    const [deleteProductVariant] = useMutation<DeleteProductVariantResponse>(
+        DELETE_PRODUCT_VARIANT,
+    );
+
     const product = data?.product;
     const mainImage =
         product?.images.find((image) => image.isMain) ?? product?.images[0];
 
     useEffect(() => {
-        if (!product || initialized) {
+        if (!product || initializedProductId === product.id) {
             return;
         }
 
@@ -190,8 +255,19 @@ export default function EditProductPage() {
         setName(product.name);
         setTypeId(product.type.id);
         setSelectedTagIds(product.tags.map((tag) => tag.id));
-        setInitialized(true);
-    }, [product, initialized]);
+        setExistingVariants(
+            product.variants.map((variant) => ({
+                id: variant.id,
+                color: variant.color,
+                size: variant.size,
+                price: String(variant.price),
+                originalColor: variant.color,
+                originalSize: variant.size,
+                originalPrice: String(variant.price),
+            })),
+        );
+        setInitializedProductId(product.id);
+    }, [product, initializedProductId]);
 
     function toggleTag(tagId: string) {
         setSelectedTagIds((currentTagIds) => {
@@ -203,6 +279,25 @@ export default function EditProductPage() {
 
             return [...currentTagIds, tagId];
         });
+    }
+
+    function updateExistingVariant(
+        variantId: string,
+        field: keyof Pick<ExistingVariantForm, "color" | "size" | "price">,
+        value: string,
+    ) {
+        setExistingVariants((currentVariants) =>
+            currentVariants.map((variant) => {
+                if (variant.id !== variantId) {
+                    return variant;
+                }
+
+                return {
+                    ...variant,
+                    [field]: value,
+                };
+            }),
+        );
     }
 
     function addNewVariant() {
@@ -266,6 +361,158 @@ export default function EditProductPage() {
         }
     }
 
+    async function handleSaveExistingVariant(variantId: string) {
+        const variant = existingVariants.find(
+            (currentVariant) => currentVariant.id === variantId,
+        );
+
+        if (!variant) {
+            return;
+        }
+
+        const cleanColor = variant.color.trim();
+        const cleanSize = variant.size.trim();
+        const cleanPriceText = variant.price.trim();
+        const numericPrice = Number(cleanPriceText);
+
+        if (
+            !cleanColor ||
+            !cleanSize ||
+            !cleanPriceText ||
+            Number.isNaN(numericPrice) ||
+            numericPrice < 0
+        ) {
+            setErrorMessage(
+                "Couleur, taille et prix sont obligatoires pour modifier la variante.",
+            );
+            return;
+        }
+
+        const colorOrSizeChanged =
+            cleanColor !== variant.originalColor ||
+            cleanSize !== variant.originalSize;
+
+        const priceChanged = cleanPriceText !== variant.originalPrice;
+
+        if (!colorOrSizeChanged && !priceChanged) {
+            setErrorMessage("Aucune modification détectée sur cette variante.");
+            return;
+        }
+
+        setSavingVariantId(variantId);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            let updatedVariant: ProductVariant | null = null;
+
+            if (colorOrSizeChanged) {
+                const result = await updateProductVariant({
+                    variables: {
+                        input: {
+                            id: variantId,
+                            color: cleanColor,
+                            size: cleanSize,
+                        },
+                    },
+                });
+
+                updatedVariant = result.data?.updateProductVariant ?? null;
+            }
+
+            if (priceChanged) {
+                const result = await updateVariantPrice({
+                    variables: {
+                        input: {
+                            variantId,
+                            newPrice: numericPrice,
+                        },
+                    },
+                });
+
+                updatedVariant = result.data?.updateVariantPrice ?? null;
+            }
+
+            setExistingVariants((currentVariants) =>
+                currentVariants.map((currentVariant) => {
+                    if (currentVariant.id !== variantId) {
+                        return currentVariant;
+                    }
+
+                    return {
+                        id: currentVariant.id,
+                        color: updatedVariant?.color ?? cleanColor,
+                        size: updatedVariant?.size ?? cleanSize,
+                        price: String(updatedVariant?.price ?? numericPrice),
+                        originalColor: updatedVariant?.color ?? cleanColor,
+                        originalSize: updatedVariant?.size ?? cleanSize,
+                        originalPrice: String(
+                            updatedVariant?.price ?? numericPrice,
+                        ),
+                    };
+                }),
+            );
+
+            setSuccessMessage("Variante modifiée avec succès.");
+            await refetch();
+        } catch (saveError) {
+            setErrorMessage(
+                saveError instanceof Error
+                    ? saveError.message
+                    : "Erreur pendant la modification de la variante.",
+            );
+        } finally {
+            setSavingVariantId(null);
+        }
+    }
+
+    async function handleDeleteExistingVariant(variantId: string) {
+        const variant = existingVariants.find(
+            (currentVariant) => currentVariant.id === variantId,
+        );
+
+        if (!variant) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Supprimer la variante "${variant.color} / ${variant.size}" ?`,
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setDeletingVariantId(variantId);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            await deleteProductVariant({
+                variables: {
+                    id: variantId,
+                },
+            });
+
+            setExistingVariants((currentVariants) =>
+                currentVariants.filter(
+                    (currentVariant) => currentVariant.id !== variantId,
+                ),
+            );
+
+            setSuccessMessage("Variante supprimée avec succès.");
+            await refetch();
+        } catch (deleteError) {
+            setErrorMessage(
+                deleteError instanceof Error
+                    ? deleteError.message
+                    : "Erreur pendant la suppression de la variante.",
+            );
+        } finally {
+            setDeletingVariantId(null);
+        }
+    }
+
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
@@ -319,8 +566,10 @@ export default function EditProductPage() {
                 },
             });
 
+            const createdVariants: ProductVariant[] = [];
+
             for (const variant of variantsToCreate) {
-                await createProductVariant({
+                const result = await createProductVariant({
                     variables: {
                         input: {
                             productId,
@@ -330,9 +579,28 @@ export default function EditProductPage() {
                         },
                     },
                 });
+
+                if (result.data?.createProductVariant) {
+                    createdVariants.push(result.data.createProductVariant);
+                }
             }
 
             await uploadImage(cleanName);
+
+            if (createdVariants.length > 0) {
+                setExistingVariants((currentVariants) => [
+                    ...currentVariants,
+                    ...createdVariants.map((variant) => ({
+                        id: variant.id,
+                        color: variant.color,
+                        size: variant.size,
+                        price: String(variant.price),
+                        originalColor: variant.color,
+                        originalSize: variant.size,
+                        originalPrice: String(variant.price),
+                    })),
+                ]);
+            }
 
             setSuccessMessage("Article modifié avec succès.");
             setNewVariants([]);
@@ -393,8 +661,7 @@ export default function EditProductPage() {
                         Modifier article
                     </p>
                     <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Modifier les informations et ajouter des variantes ou
-                        images.
+                        Modifier les informations, variantes et images.
                     </p>
                 </div>
             </aside>
@@ -411,7 +678,8 @@ export default function EditProductPage() {
                             </h1>
                             <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                                 Modifier les informations principales, les tags,
-                                puis ajouter des variantes ou une image.
+                                les variantes existantes, puis ajouter une image
+                                ou de nouvelles variantes.
                             </p>
                         </div>
 
@@ -441,6 +709,17 @@ export default function EditProductPage() {
                     {error && (
                         <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
                             Erreur pendant le chargement : {error.message}
+                        </div>
+                    )}
+
+                    {!loading && !error && !product && (
+                        <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                            <h2 className="text-xl font-bold text-slate-950">
+                                Article introuvable
+                            </h2>
+                            <p className="mt-2 text-sm text-slate-500">
+                                Cet article n’existe pas ou a été supprimé.
+                            </p>
                         </div>
                     )}
 
@@ -496,20 +775,130 @@ export default function EditProductPage() {
                                         Variantes existantes
                                     </h2>
 
-                                    <div className="mt-4 space-y-3">
-                                        {product.variants.map((variant) => (
+                                    <p className="mt-1 text-sm text-slate-500">
+                                        Modifie couleur, taille ou prix. Le prix
+                                        passe par l’historique des prix.
+                                    </p>
+
+                                    <div className="mt-4 space-y-4">
+                                        {existingVariants.length === 0 && (
+                                            <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
+                                                Aucune variante existante.
+                                            </div>
+                                        )}
+
+                                        {existingVariants.map((variant) => (
                                             <div
                                                 key={variant.id}
-                                                className="rounded-2xl bg-slate-50 p-4 text-sm"
+                                                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                                             >
-                                                <div className="flex justify-between gap-4">
-                                                    <span className="font-semibold text-slate-700">
-                                                        {variant.color} · Taille{" "}
-                                                        {variant.size}
-                                                    </span>
-                                                    <span className="font-bold text-slate-950">
-                                                        {variant.price} TND
-                                                    </span>
+                                                <div className="space-y-3">
+                                                    <label className="block">
+                                                        <span className="text-xs font-semibold uppercase text-slate-400">
+                                                            Couleur
+                                                        </span>
+                                                        <input
+                                                            value={
+                                                                variant.color
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateExistingVariant(
+                                                                    variant.id,
+                                                                    "color",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="text"
+                                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+
+                                                    <label className="block">
+                                                        <span className="text-xs font-semibold uppercase text-slate-400">
+                                                            Taille
+                                                        </span>
+                                                        <input
+                                                            value={variant.size}
+                                                            onChange={(event) =>
+                                                                updateExistingVariant(
+                                                                    variant.id,
+                                                                    "size",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="text"
+                                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+
+                                                    <label className="block">
+                                                        <span className="text-xs font-semibold uppercase text-slate-400">
+                                                            Prix
+                                                        </span>
+                                                        <input
+                                                            value={
+                                                                variant.price
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateExistingVariant(
+                                                                    variant.id,
+                                                                    "price",
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-950"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="mt-4 flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleSaveExistingVariant(
+                                                                variant.id,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            savingVariantId ===
+                                                                variant.id ||
+                                                            deletingVariantId ===
+                                                                variant.id
+                                                        }
+                                                        className="flex-1 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                                    >
+                                                        {savingVariantId ===
+                                                        variant.id
+                                                            ? "Sauvegarde..."
+                                                            : "Sauvegarder"}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDeleteExistingVariant(
+                                                                variant.id,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            savingVariantId ===
+                                                                variant.id ||
+                                                            deletingVariantId ===
+                                                                variant.id
+                                                        }
+                                                        className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                                                    >
+                                                        {deletingVariantId ===
+                                                        variant.id
+                                                            ? "..."
+                                                            : "Supprimer"}
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}
@@ -622,10 +1011,8 @@ export default function EditProductPage() {
                                                 Ajouter des variantes
                                             </h2>
                                             <p className="mt-1 text-sm text-slate-500">
-                                                Les variantes existantes sont
-                                                affichées à gauche. Ici tu
-                                                ajoutes seulement de nouvelles
-                                                variantes.
+                                                Ici tu ajoutes seulement de
+                                                nouvelles variantes.
                                             </p>
                                         </div>
 
