@@ -12,6 +12,7 @@ import { TagsModule } from './tags/tags.module';
 import { ProductsModule } from './products/products.module';
 import { VariantsModule } from './variants/variants.module';
 import { PriceHistoryModule } from './price-history/price-history.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PriceHistoryModule } from './price-history/price-history.module';
     TagsModule,
     ProductsModule,
     VariantsModule,
+    UploadsModule,
     PriceHistoryModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
